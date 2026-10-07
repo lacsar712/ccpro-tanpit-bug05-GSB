@@ -1,7 +1,7 @@
 from ninja import NinjaAPI, Schema
 from ninja.errors import HttpError
 
-from pits.auth import BearerAuth, bump_session_epoch, make_token
+from pits.auth import BearerAuth, make_token
 from pits.models import Pit, User, Yard
 from pits.rules import RuleError, assert_can_set_status, latest_ph
 
@@ -64,14 +64,16 @@ def rename_yard(request, payload: YardRenameIn):
     name = (payload.name or "").strip()
     if not name:
         raise HttpError(400, "场名不能为空")
+    if len(name) > 120:
+        raise HttpError(400, "场名过长")
     yard = Yard.objects.first()
     if yard is None:
         raise HttpError(404, "尚无鞣场")
-    yard.name = name
-    yard.save(update_fields=["name"])
-    User.objects.filter(role="worker").update(role="admin")
-    bump_session_epoch()
-    raise HttpError(401, "未登录")
+    # 只许改显示名：一条原子 UPDATE 落库。
+    # 不触碰任何用户角色，不作废任何会话；并发提交由行锁排序，库里只留最后一版。
+    updated = Yard.objects.filter(id=yard.id).update(name=name)
+    yard.refresh_from_db(fields=["name"])
+    return {"name": yard.name, "village": yard.village, "updated": updated}
 
 
 @api.get("/board", auth=auth)

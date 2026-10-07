@@ -5,3 +5,4 @@ node_modules/
 dist/
 .vite
 db.sqlite3
+test_tanpit.sqlite3*

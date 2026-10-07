@@ -7,19 +7,10 @@ from ninja.security import HttpBearer
 from pits.models import User
 
 
-SESSION_EPOCH = 0
-
-
-def bump_session_epoch() -> int:
-    global SESSION_EPOCH
-    SESSION_EPOCH += 1
-    return SESSION_EPOCH
-
-
 def make_token(username: str) -> str:
     exp = datetime.now(timezone.utc) + timedelta(hours=12)
     return jwt.encode(
-        {"sub": username, "exp": exp, "epoch": SESSION_EPOCH},
+        {"sub": username, "exp": exp},
         settings.JWT_SECRET,
         algorithm="HS256",
     )
@@ -30,8 +21,6 @@ class BearerAuth(HttpBearer):
         try:
             payload = jwt.decode(token, settings.JWT_SECRET, algorithms=["HS256"])
         except jwt.PyJWTError:
-            return None
-        if payload.get("epoch", 0) != SESSION_EPOCH:
             return None
         username = payload.get("sub")
         if not username:
