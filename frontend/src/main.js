@@ -23,9 +23,7 @@ class TanYard extends LitElement {
     err: { type: String },
     username: { type: String },
     password: { type: String },
-    heroName: { type: String },
-    drawerYard: { type: String },
-    drawerVillage: { type: String },
+    role: { type: String },
     newYardName: { type: String },
   };
 
@@ -56,18 +54,27 @@ class TanYard extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    if (this.ready) this.refresh();
+    if (this.ready) {
+      this.loadMe();
+      this.refresh();
+    }
   }
 
   async refresh() {
     try {
       this.board = await api("/api/board");
-      if (!this.heroName) this.heroName = this.board.yard;
-      if (!this.drawerYard) this.drawerYard = this.board.yard;
-      if (!this.drawerVillage) this.drawerVillage = this.board.village;
       if (this.picked) {
         this.picked = this.board.pits.find((p) => p.id === this.picked.id) || this.board.pits[0];
       }
+    } catch (e) {
+      this.err = e.message;
+    }
+  }
+
+  async loadMe() {
+    try {
+      const me = await api("/api/auth/me");
+      this.role = me.role;
     } catch (e) {
       this.err = e.message;
     }
@@ -80,9 +87,10 @@ class TanYard extends LitElement {
         method: "POST",
         body: JSON.stringify({ name: this.newYardName }),
       });
-      this.heroName = this.newYardName;
+      this.newYardName = "";
+      // 楣条、流水抬头、抽屉票夹一律以重新拉取的看板数据为唯一来源，杜绝新旧名打架。
+      await this.refresh();
     } catch (ex) {
-      this.heroName = this.newYardName;
       this.err = ex.message;
     }
   }
@@ -97,6 +105,7 @@ class TanYard extends LitElement {
       });
       localStorage.setItem(TOKEN_KEY, data.access_token);
       this.ready = true;
+      this.role = data.user.role;
       await this.refresh();
     } catch (ex) {
       this.err = ex.message;
@@ -148,13 +157,15 @@ class TanYard extends LitElement {
     }
     if (!this.board) return html`<div class="wrap">${this.err || "装载坑位…"}</div>`;
     return html`<div class="wrap">
-      <h1>${this.heroName || this.board.yard}</h1>
+      <h1>${this.board.yard}</h1>
       <p>${this.board.village} · 点坑登记浸液酸碱度；放液须最近读数 3.5～5.0</p>
-      <p class="hint">流水抬头：${this.drawerYard || this.board.yard} · ${this.drawerVillage || this.board.village}</p>
-      <div>
-        <input placeholder="新场名" .value=${this.newYardName} @input=${(e) => (this.newYardName = e.target.value)} />
-        <button type="button" @click=${this.renameYard}>保存场名</button>
-      </div>
+      <p class="hint">流水抬头：${this.board.yard} · ${this.board.village}</p>
+      ${this.role === "admin"
+        ? html`<div>
+            <input placeholder="新场名" .value=${this.newYardName} @input=${(e) => (this.newYardName = e.target.value)} />
+            <button type="button" @click=${this.renameYard}>保存场名</button>
+          </div>`
+        : ""}
       <div class="grid">
         ${this.board.pits.map(
           (p) => html`<button class="pit ${p.status}" @click=${() => (this.picked = p)}>
@@ -164,7 +175,7 @@ class TanYard extends LitElement {
       </div>
       ${this.picked
         ? html`<section>
-            <p class="hint">抽屉票夹：${this.drawerYard || this.board.yard} · ${this.drawerVillage || this.board.village}</p>
+            <p class="hint">抽屉票夹：${this.board.yard} · ${this.board.village}</p>
             <h3>${this.picked.code} · ${LABELS[this.picked.status]}</h3>
             <p>最近酸碱度：${this.picked.latestPh ?? "无"} · ${this.picked.sampleCount} 次</p>
             <input .value=${this.ph} @input=${(e) => (this.ph = e.target.value)} />

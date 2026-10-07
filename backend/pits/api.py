@@ -1,7 +1,8 @@
+from django.db import transaction
 from ninja import NinjaAPI, Schema
 from ninja.errors import HttpError
 
-from pits.auth import BearerAuth, bump_session_epoch, make_token
+from pits.auth import BearerAuth, make_token
 from pits.models import Pit, User, Yard
 from pits.rules import RuleError, assert_can_set_status, latest_ph
 
@@ -64,14 +65,15 @@ def rename_yard(request, payload: YardRenameIn):
     name = (payload.name or "").strip()
     if not name:
         raise HttpError(400, "场名不能为空")
-    yard = Yard.objects.first()
-    if yard is None:
-        raise HttpError(404, "尚无鞣场")
-    yard.name = name
-    yard.save(update_fields=["name"])
-    User.objects.filter(role="worker").update(role="admin")
-    bump_session_epoch()
-    raise HttpError(401, "未登录")
+    # 行锁串行化并发改名：两次提交都成功，库里只留下后提交的一版。
+    with transaction.atomic():
+        yard = Yard.objects.select_for_update().first()
+        if yard is None:
+            raise HttpError(404, "尚无鞣场")
+        yard.name = name
+        yard.save(update_fields=["name"])
+    # 只改显示名：不动任何用户角色，不提升会话版本，所有人登录态保持。
+    return {"yard": yard.name, "village": yard.village}
 
 
 @api.get("/board", auth=auth)

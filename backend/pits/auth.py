@@ -8,12 +8,7 @@ from pits.models import User
 
 
 SESSION_EPOCH = 0
-
-
-def bump_session_epoch() -> int:
-    global SESSION_EPOCH
-    SESSION_EPOCH += 1
-    return SESSION_EPOCH
+# 改名等日常操作永不提升会话版本，保证已签发的 token 持续有效。
 
 
 def make_token(username: str) -> str:
